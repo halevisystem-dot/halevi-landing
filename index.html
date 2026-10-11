@@ -746,6 +746,8 @@ footer {
 
 <script>
 (function() {
+  // IMPORTANTE: las opciones de cada pregunta deben ser idénticas a las que
+  // valida el servidor en netlify/functions/espejo.js (lista OPCIONES).
   var ESPEJO_QUESTIONS = [
     {
       id: 'q1',
@@ -770,7 +772,14 @@ footer {
   ];
 
   var espejoAnswers = {};
+  var espejoNombre = '';
+  var espejoEmail = '';
   var espejoBody = document.getElementById('espejo-body');
+
+  // Escapa texto antes de insertarlo como HTML
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
 
   function updateDots(step) {
     document.querySelectorAll('#espejo-progress .quiz-dot').forEach(function(dot, i) {
@@ -827,6 +836,15 @@ footer {
         alert('Por favor completa tu nombre y correo para continuar.');
         return;
       }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        alert('Revisa tu correo electrónico: parece que le falta algo.');
+        return;
+      }
+
+      // Guardar nombre y correo para el envío de la lectura
+      espejoNombre = nombre;
+      espejoEmail = email;
+
       // Enviar lead a Formspree
       fetch('https://formspree.io/f/mwvddoyo', {
         method: 'POST',
@@ -866,11 +884,15 @@ footer {
       '<style>@keyframes espejo-spin{to{transform:rotate(360deg);}}</style>';
   }
 
-  function renderResult(text) {
+  function renderResult(text, emailSent) {
+    var copia = emailSent
+      ? '<p style="font-size:12px;color:var(--text-soft);margin:0 0 6px;line-height:1.6;">Te enviamos una copia a ' + esc(espejoEmail) + '. Si no la ves, revisa tu carpeta de spam.</p>'
+      : '';
     espejoBody.innerHTML =
       '<div class="quiz-result-icon">◆</div>' +
       '<div class="quiz-result-title">Tu lectura</div>' +
-      '<p class="quiz-result-body">' + text + '</p>' +
+      '<p class="quiz-result-body">' + esc(text) + '</p>' +
+      copia +
       '<p style="font-size:13px;color:var(--text-soft);margin:18px 0 24px;">Esto es solo la superficie. Tu Análisis Sistémico Personal completo revela exactamente de dónde viene este patrón y cómo empezar a soltarlo.</p>' +
       '<a href="https://payhip.com/b/nUea8" class="quiz-cta" onclick="gtag(\'event\',\'click_compra\',{\'event_category\':\'conversion\',\'event_label\':\'minitest_resultado\'})">Quiero ver mi patrón completo</a>' +
       '<div style="margin-top:14px;"><button class="espejo-restart" style="background:none;border:none;color:var(--gold-sand);font-size:11px;text-decoration:underline;cursor:pointer;">Repetir el test</button></div>';
@@ -878,15 +900,8 @@ footer {
   }
 
   async function generateEspejoResult() {
-    var prompt = 'Eres Saúl Haleví, analista sistémico de Haleví Systems, formado en constelaciones familiares y psicología sistémica. Tu voz es profunda, íntima, pausada y directa.\n\n' +
-      'Respuestas del cliente:\n' +
-      '1. Patrón que se repite: ' + espejoAnswers.q1 + '\n' +
-      '2. Patrón heredado de los padres: ' + espejoAnswers.q2 + '\n' +
-      '3. Cómo se manifiesta en el cuerpo: ' + espejoAnswers.q3 + '\n' +
-      '4. Qué cambiaría primero: ' + espejoAnswers.q4 + '\n\n' +
-      'Genera un mini-resultado de 80 a 110 palabras, en segunda persona, hablando directo. Abre nombrando el patrón con su respuesta exacta de la pregunta 1. Conecta con el origen familiar usando lenguaje sistémico (ej: esto no empezó contigo). Cierra abriendo tensión sin resolverla del todo, invitando a profundizar. Sin markdown, sin comillas, sin preámbulo, solo el texto del resultado.';
-
     try {
+      // El servidor genera la lectura y, si hay nombre y correo, también la envía por email
       var response = await fetch('/.netlify/functions/espejo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -894,14 +909,19 @@ footer {
           q1: espejoAnswers.q1,
           q2: espejoAnswers.q2,
           q3: espejoAnswers.q3,
-          q4: espejoAnswers.q4
+          q4: espejoAnswers.q4,
+          nombre: espejoNombre,
+          email: espejoEmail
         })
       });
       var data = await response.json();
       var text = (data.result || '').trim();
       if (!text) throw new Error('empty');
       gtag('event', 'minitest_completado', {'event_category': 'conversion', 'event_label': 'resultado_generado'});
-      renderResult(text);
+      if (data.emailSent === true) {
+        gtag('event', 'espejo_email_enviado', {'event_category': 'lead', 'event_label': 'lectura_enviada'});
+      }
+      renderResult(text, data.emailSent === true);
     } catch (err) {
       espejoBody.innerHTML = '<p class="quiz-question">No pudimos generar tu lectura en este momento.</p>' +
         '<div class="quiz-options"><button class="quiz-option espejo-retry">Intentar de nuevo</button></div>';

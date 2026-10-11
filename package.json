@@ -1,0 +1,9 @@
+{
+  "name": "halevi-landing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Landing de Haleví Systems",
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}
